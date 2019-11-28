@@ -14,9 +14,11 @@
   "authors": [
     {
       "name": "wuhen",
-      "email": "guoqing1988@gmail.com"
+      "email": "guoqing1988@gmail.com",
+      "homepage": "https://github.com/guoqing1988"
     }
   ],
+  "license": "MIT",
   "require": {
     "php": ">=7.0"
   },
