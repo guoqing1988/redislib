@@ -7,5 +7,5 @@ class SetModel extends BaseModel
 {
     protected $type = 'set';
 
-    protected $key = 'redisun:set:{id}:members';
+    protected $key = 'rdb:set:{id}:members';
 }

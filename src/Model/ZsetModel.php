@@ -5,5 +5,5 @@ class ZsetModel extends BaseModel
 {
     protected $type = 'zset';
 
-    protected $key = 'redisun:{id}:zset';
+    protected $key = 'rdb:{id}:zset';
 }

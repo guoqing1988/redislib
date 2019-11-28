@@ -3,7 +3,7 @@ namespace Wuhen\Redislib\Model;
 
 class StringModel extends BaseModel
 {
-    protected $key = 'redisun:{id}:string:{name}';
+    protected $key = 'rdb:{id}:string:{name}';
 
     protected $type = 'string';
 

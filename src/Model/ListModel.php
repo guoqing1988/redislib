@@ -5,5 +5,5 @@ class ListModel extends BaseModel
 {
     protected $type = 'list';
 
-    protected $key = 'redisun:{id}:list';
+    protected $key = 'rdb:{id}:list';
 }
