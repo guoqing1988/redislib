@@ -1,0 +1,28 @@
+{
+  "name": "wuhen/redislib",
+  "description": "redis 数据库,支持orm方式查询,结合lua 支持mongodb方式查询模式,mongoDB inspired JSON filters for redis",
+  "type": "library",
+  "keywords": [
+    "redis",
+    "lua",
+    "eval",
+    "sql",
+    "orm",
+    "redis filters",
+  ],
+  "homepage": "https://github.com/guoqing1988/redislib",
+  "authors": [
+    {
+      "name": "wuhen",
+      "email": "guoqing1988@gmail.com"
+    }
+  ],
+  "require": {
+    "php": ">=7.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Wuhen\\Redislib\\": "src/"
+    }
+  }
+}
