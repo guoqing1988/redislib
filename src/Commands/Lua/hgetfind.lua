@@ -35,7 +35,17 @@ local COMPARATORS = {
           end
         end
         return false;
-    end, 
+    end,
+    ['empty'] = function (a)
+        if a == nil then
+            return true
+        elseif type(a) == "string" and string.len(a) == 0 then
+            return true
+        elseif type(a) == "table" and next(a) == nil then
+            return true
+        end
+        return false
+    end
 }
 COMPARATORS['gt'] = function (a, b) return COMPARATORS[">"](a,b) end
 COMPARATORS['gte'] = function (a, b) return COMPARATORS[">="](a,b) end
@@ -107,7 +117,7 @@ end
 
 local function filterJsonData(sourcedata,where)
     if sourcedata ~= nil and sourcedata ~= ""  then
-        if type(where) == "table" and next(where) ~= nil then
+        if COMPARATORS.isarray(where) then
             local data = sourcedata
             if type(sourcedata) == "string" then
                 data = cjson.decode(sourcedata) 
@@ -142,24 +152,14 @@ local function filterJsonData(sourcedata,where)
     return false
 end
 
--- local str = '{"test":"test111","name":"liu","num":"10"}'
--- local ARGV = {str}
--- print(COMPARATORS["in"](1,{1,2,3,4,["name"]=5}))
--- print(COMPARATORS["eq"]("213",213))
--- print(COMPARATORS["gte"]("213",213))
--- print(COMPARATORS.find("test 12321 666sdfds","%d-%d"))
--- print(COMPARATORS.find("test 12321 666sdfds","%a+"))
+redis.log(redis.LOG_NOTICE,"ARGV:".. cjson.encode(ARGV))
+redis.log(redis.LOG_NOTICE,"KEYS:".. cjson.encode(KEYS))
 
--- local str = '{"test":"test111","name":"liu","num":"10"}'
--- local w = {}
--- w['num'] = {">=",10}
--- w['name'] = {"nlike","423"}
--- print(filterJsonData(str,w))
 
--- os.exit()
--- return ARGV[1]
+local isdebug = '{$debug}'
 local values = {}
 local where = cjson.decode(ARGV[1]) or {}
+if where == 'findall' then where = {} end
 local orderBy = ARGV[2] and cjson.decode(ARGV[2]) or {}
 local limit = ARGV[3] and ARGV[3] or 1000
 local sstr = split(KEYS[1],"---")
@@ -204,21 +204,36 @@ for i,v in ipairs(KEYS) do
         local limit_num = 1
         for kkk,vvv in pairs(newdata) do
             redis.log(redis.LOG_NOTICE,"for newdata:".. cjson.encode({vvv["_field_key"],vvv,where}) )
-            if filterJsonData(vvv,where) then
-                if limit_num > tonumber(limit) then
-                    break
+
+            if limit_num > tonumber(limit) then
+                break
+            end
+
+            if not COMPARATORS.empty(where) then
+                if filterJsonData(vvv,where) then
+                    redis.log(redis.LOG_NOTICE,"selected newdata:".. cjson.encode({vvv["_field_key"],vvv,where}) )
+                    -- item[#item+1] = {kkk,vvv}
+
+                    local field_key = vvv["_field_key"]
+                    vvv["_field_key"] = nil
+
+                    -- item[field_key] = cjson.encode(vvv)
+                    item[field_key] = vvv
+                    -- table.insert(item,field_key)
+                    -- table.insert(item,cjson.encode(vvv))
+                    limit_num = limit_num+1
                 end
-
-                redis.log(redis.LOG_NOTICE,"selected newdata:".. cjson.encode({vvv["_field_key"],vvv,where}) )
-                -- item[#item+1] = {kkk,vvv}
-
-                table.insert(item,vvv["_field_key"])
+            else
+                local field_key = vvv["_field_key"]
                 vvv["_field_key"] = nil
-                table.insert(item,cjson.encode(vvv))
+                -- item[field_key] = cjson.encode(vvv)
+                item[field_key] = vvv
+                -- table.insert(item,field_key)
+                -- table.insert(item,cjson.encode(vvv))
                 limit_num = limit_num+1
             end
         end
-        values[#values+1] = item
+        values[#values+1] = cjson.encode(item)
     end
-end 
+end
 return {KEYS,values};

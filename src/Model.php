@@ -484,16 +484,19 @@ abstract class Model
             // var_dump($method);
             // array_unshift($queryKeys,$method);
             $queryKeys[0] = $method."---".$queryKeys[0];
+            $where or $where = json_encode('findall');
             $args = [$where];
             $orderby and $args[] = $orderby;
             $limit and $args[] = intval($limit);
+
+            // print_r($args);exit;
             $command = $this->commandFactory->getCommand('Hgetfind', $queryKeys,$args);
             $data = $this->executeCommand($command);
             // var_dump($data);exit;
         }
-        if ($data && $this->type == static::TYPE_HASH) {
-            $data = $this->resolveHashes($data);
-        }
+        // if ($data && $this->type == static::TYPE_HASH) {
+        //     $data = $this->resolveHashes($data);
+        // }
         return $data;
     }
 
@@ -793,7 +796,7 @@ abstract class Model
         } elseif ($exists === true) {
             $command->pleaseExists();
         }
-        $command->pleaseDeleteIfExists();
+        // $command->pleaseDeleteIfExists();
         $response = $this->executeCommand($command);
 
         return isset($response[$key]) && $response[$key];
@@ -814,7 +817,7 @@ abstract class Model
 
         $value = $this->castValueForUpdate($value);
         $command = $this->commandFactory->getCommand($method, $keys, $value);
-        $command->pleaseDeleteIfExists();
+        // $command->pleaseDeleteIfExists();
         if ($ttl) {
             $command->setTtl($ttl);
         }
@@ -1019,7 +1022,6 @@ abstract class Model
                 throw $e;
             }
         }
-
         $data = $command->parseResponse($data);
 
         return $data;

@@ -51,7 +51,7 @@ $b = [
 ];
 $model = new \Wuhen\Redislib\Model\HashModel();
 // $model->insert('test', $a);
-for ($i=1; $i <=10 ; $i++) {
+for ($i=10; $i <=20 ; $i++) {
 	$b['name'] .= $i;
 	$b['age'] = rand(1,100);
 	$b['id'] = $i;

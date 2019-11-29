@@ -109,7 +109,6 @@ abstract class Command
         if (empty($data)) {
             return [];
         }
-// print_r($data);exit;
         if (isset($data[0]) && count($data[0]) === $this->getKeysCount()) {
             $items = array_combine($data[0], $data[1]);
 // print_r($items);
