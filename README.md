@@ -130,6 +130,7 @@ $res = $model->where('name',$table)->findInRedis(["type"=>1,"level"=>['inset',[1
 大于 |    {key:["gt",value]}<br>{key:[">",value]} |   findInRedis({"id":[">",123]}) | where id > '123'
 大于等于 | {key:["gte",value]}<br>{key:[">=",value]} |  findInRedis({"id":[">=",123]}) |    where id >= '123'
 不等于  | {key:["ne",value]}<br>{key:["!=",value]} |   findInRedis({"id":["!=",123]}) |    where id != '123'
+两个数之间  | {key:["between",[value]]} |   findInRedis({"id":["between",[100,200]]}) |    where id BETWEEN 100 AND 200
 like     | {key:["like",value]} |   findInRedis({"id":["like",123]}) |  where id like '%123%'
 in   | {key:["in",[value]]} |   findInRedis({"id":["in",[1,2,3]}) | where id in (1,2,3,4)
 nin  | {key:["nin",[value]]} |  findInRedis({"id":["nin",[1,2,3]}) |    where id not in (1,2,3,4)
