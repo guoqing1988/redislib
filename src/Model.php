@@ -398,9 +398,10 @@ abstract class Model
      * @param $value
      * @param int $ttl
      * @param bool $exists
+     * @param bool $deleteIfExists
      * @return mixed
      */
-    public function insert(array $bindings, $value, $ttl = null, $exists = null)
+    public function insert(array $bindings, $value, $ttl = null, $exists = null, $deleteIfExists = null )
     {
         $this->newQuery();
 
@@ -414,7 +415,7 @@ abstract class Model
             return false;
         }
 
-        return $this->insertProxy($queryKey, $value, $ttl, $exists);
+        return $this->insertProxy($queryKey, $value, $ttl, $exists, $deleteIfExists);
     }
 
     /**
@@ -441,6 +442,19 @@ abstract class Model
     public function insertNotExists(array $bindings, $value, $ttl = null)
     {
         return $this->insert($bindings, $value, $ttl, false);
+    }
+
+    /**
+     * [replace 删除并重建]
+     * @param  array  $bindings [description]
+     * @param  array $value    [description]
+     * @param  int $ttl      [description]
+     * @param  bool $exists   [description]
+     * @return mixed           [description]
+     */
+    public function replace(array $bindings, $value, $ttl = null, $exists = null)
+    {
+        return $this->insert($bindings, $value, $ttl, $exists,true);
     }
 
     /**
@@ -473,24 +487,60 @@ abstract class Model
      * [findInRedis redis中进行筛选 支持mongodb查询模式]
      * @param  array  $where   [筛选条件 支持mongodb查询模式 如 ['name'=>['like','1']] ]
      * @param  array  $orderby [排序方式 支持多维排序 如 [['age',1],['id',2]] ]
+     * @param  array  $limit [返回数量  ]
+     * @param  array  $select [select 返回字段 可以为 ['id','name'] or 'id,name' ]
      * @return [array]         [description]
      */
-    public function findInRedis($where=[],$orderby=[],$limit=1000)
+    public function findInRedis($where=[],$orderby=[],$limit=1000,$select="")
     {
         $queryKeys = $this->prepareKeys();
         $data = [];
         if ($queryKeys) {
-            list($method, $params) = $this->getFindMethodAndParameters();
+            list($method, $params) = $this->getFindRedisMethodAndParameters();
             // var_dump($method);
             // array_unshift($queryKeys,$method);
-            $queryKeys[0] = $method."---".$queryKeys[0];
+            
+            if( $orderby && !is_array($orderby) ){
+                $rorderby = [];
+                //1 升序， 2 降序
+                $orderByOp = [
+                    'asc'=>1,
+                    'desc'=>2,
+                ];
+                foreach (explode(',',trim($orderby,' ,')) as $v) {
+                    list($field,$op) = explode(' ',preg_replace('/\s+/',' ',$v));
+                    $op = $orderByOp[$op]??$orderByOp['asc'];
+                    $rorderby[] = [$field,$op];
+                }
+                $orderby = $rorderby;
+            }
+            if( $this->type == 'hash' && $where && is_array($where) ){
+                $field_where = [];
+                if( isset($where['id']) && $where['id'] !="" ){
+                    if( is_array($where['id']) ){
+                        if( $where['id'][0] == 'in' && is_array($where['id'][1]) ){
+                            $field_where += $where['id'][1];
+                        }
+                    }else{
+                        $field_where[] = $where['id'];
+                    }
+                }
+                if( !empty($field_where) ){
+                    $where['field_where'] = $field_where;
+                    unset($where['id']);
+                }
+            }
+            // $queryKeys[0] = $queryKeys[0];
             $where or $where = json_encode('findall');
             $args = [$where];
-            $orderby and $args[] = $orderby;
-            $limit and $args[] = intval($limit);
+            $args[] = $orderby?$orderby:[];
+            $args[] = intval($limit);
+            if( $select ){
+                $args[] = is_array($select)?$select:explode(',',$select);
+            }
 
             // print_r($args);exit;
-            $command = $this->commandFactory->getCommand('Hgetfind', $queryKeys,$args);
+            $command = $this->commandFactory->getCommand($method, $queryKeys,$args);
             $data = $this->executeCommand($command);
             // var_dump($data);exit;
         }
@@ -710,7 +760,11 @@ abstract class Model
     {
         try
         {
-            $this->redClient = new RedisClient($parameters);
+            if( !empty($parameters['enable_sentinel']) ){
+                $this->redClient = new SentinelPool($parameters);
+            }else{
+                $this->redClient = new RedisClient($parameters);
+            }
         }
         catch (\Exception $e)
         {
@@ -778,7 +832,7 @@ abstract class Model
      * @param null|bool $exists
      * @return bool
      */
-    protected function insertProxy($key, $value, $ttl = null, $exists = null)
+    protected function insertProxy($key, $value, $ttl = null, $exists = null,$deleteIfExists = false)
     {
         $method = $this->getUpdateMethod();
         if (!$method) {
@@ -796,7 +850,7 @@ abstract class Model
         } elseif ($exists === true) {
             $command->pleaseExists();
         }
-        // $command->pleaseDeleteIfExists();
+        if( $deleteIfExists ) $command->pleaseDeleteIfExists();
         $response = $this->executeCommand($command);
 
         return isset($response[$key]) && $response[$key];
@@ -907,7 +961,7 @@ abstract class Model
     {
         switch ($this->type) {
             case 'string':
-                $value = [(string)$value];
+                $value = [$value];
                 break;
             case 'list':
             case 'set':
@@ -924,9 +978,10 @@ abstract class Model
             case 'hash':
                 $casted = [];
                 foreach ($value as $k => $v) {
-                    $casted[] = $k;
+                    $casted[] = $v['id']??$k;
                     $casted[] = $v;
                 }
+                // print_r($casted);exit;
                 $value = $casted;
                 break;
             default:
@@ -962,6 +1017,37 @@ abstract class Model
                 break;
             case 'hash':
                 $method = 'hgetall';
+                break;
+            default:
+                break;
+        }
+
+        return [$method, $parameters];
+    }
+
+
+    protected function getFindRedisMethodAndParameters()
+    {
+        $method = '';
+        $parameters = [];
+
+        switch ($this->type) {
+            case 'string':
+                $method = 'getfind';
+                break;
+            case 'list':
+                $method = 'lrange';
+                $parameters = [0, -1];
+                break;
+            case 'set':
+                $method = 'smembers';
+                break;
+            case 'zset':
+                $method = 'zrange';
+                $parameters = [0, -1];
+                break;
+            case 'hash':
+                $method = 'hgetfind';
                 break;
             default:
                 break;

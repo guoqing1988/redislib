@@ -46,6 +46,14 @@ abstract class Command
     protected $commandName;
 
     /**
+     * [$luaUtilsScript LUA工具类]
+     * @var [string]
+     */
+    protected static $luaUtilsScript;
+
+    protected static $luaCode = [];
+
+    /**
      * Command constructor.
      * @param array $keys
      * @param array $args
@@ -55,6 +63,8 @@ abstract class Command
         $this->keys = $keys;
         $this->arguments = $args;
         $this->commandName = $command;
+        $this->loadLuaCode('utils');
+        // $this->loadLuaCode($command);
     }
 
     public function getCommandName()
@@ -65,7 +75,7 @@ abstract class Command
     public function getArguments()
     {
         foreach ($this->arguments as &$value) {
-            if( $value && is_array($value) ){
+            if( is_array($value) ){
                 $value = json_encode($value,256);
             }
         }
@@ -161,5 +171,23 @@ LUA;
         }
 
         return $script;
+    }
+
+    public function luaUtils()
+    {   
+        return $this->loadLuaCode('utils');
+    }
+
+    public function getLuaCode($name='')
+    {
+        return $this->loadLuaCode(strtolower($name));
+    }
+
+    protected function loadLuaCode($name)
+    {
+        if( !isset(self::$luaCode[$name]) ){
+            self::$luaCode[$name] = file_get_contents(__DIR__."/Lua/".$name.".lua");
+        }
+        return self::$luaCode[$name];
     }
 }

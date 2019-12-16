@@ -2,11 +2,11 @@
 namespace Wuhen\Redislib\Commands;
 
 /**
- * Command for "Hgetfind"
- * Class HgetallCommand
+ * Command for "getfind"
+ * Class GetfindCommand
  * @package Wuhen\Redislib\Commands
  */
-class HgetfindCommand extends Command
+class GetfindCommand extends Command
 {
     public function getScript()
     {
