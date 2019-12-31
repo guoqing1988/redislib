@@ -31,25 +31,61 @@ if isNoCache ~= "yes" then
         do return {KEYS,{res},json_encode(timemap)} end 
     end
 end
-
+-- local fields_isarray = COMPARATORS.isarray(fields);
 for i,v in ipairs(KEYS) do
-    local jsondata = {}
-    local begincmdtime = redis.call('time')
-    jsondata = redis.call('get',v)
-    timemap["cmd_time"] = executionTime(begincmdtime)
-    -- redis.log(redis.LOG_NOTICE,"命令执行时间:"..executionTime(begincmdtime).."ms")
-    -- redis.log(redis.LOG_NOTICE,"jsondata:".. cjson.encode(jsondata) )
+    local listdata = {}
     local sstime = redis.call('time')
-    local newdata = json_decode(jsondata)
-    timemap["data_create_time"] = executionTime(sstime)
-    -- redis.log(redis.LOG_NOTICE,"数据重组:"..executionTime(sstime).."ms")
+    local ids = redis.call('zrange', v, 0, -1)
+    timemap["cmd_time"] = executionTime(sstime)
+
     sstime = redis.call('time')
-    values[#values+1] = cjson.encode(filterData(newdata,where,orderBy,limit,fields))
+    local limit_num = 1
+    limit = tonumber(limit)
+    for ii,vv in ipairs(ids) do
+        if limit_num > limit then
+            break
+        end
+        -- if fields_isarray then
+        --     item = redis.call('hmget',v..":"..vv,unpack(fields))
+        -- else
+        local item = redis.call('hgetall',v..":"..vv)
+        -- end
+        -- redis.log(redis.LOG_NOTICE, json_encode(item))
+        local iswhere = COMPARATORS.empty(where)
+        if item ~= nil then 
+            local itemarr = {}
+            local j=1
+            while j<#item do
+                itemarr[item[j]] = item[j+1]
+                j=j+2
+            end
+
+            -- 使用mongodb查询模式 进行数据赛选
+            -- if not iswhere then
+            --     if filterJsonData(itemarr,where) then
+            --         itemarr = COMPARATORS.filterkey(itemarr,fields)
+            --         table.insert(listdata,itemarr)
+            --         limit_num = limit_num+1
+            --     end
+            -- else
+            --     itemarr = COMPARATORS.filterkey(itemarr,fields)
+            --     table.insert(listdata,itemarr)
+            --     limit_num = limit_num+1
+            -- end
+
+            table.insert(listdata,itemarr)
+        end
+    end
+
+    timemap["data_create_time"] = executionTime(sstime)
+
+    sstime = redis.call('time')
+    -- values[#values+1] = cjson.encode(listdata)
+    values[#values+1] = cjson.encode(filterData(listdata,where,orderBy,limit,fields))
     redis.replicate_commands()
     redis.call('set',cache_key..sha1_key,values[1],"EX",cache_expire);
     timemap["filter_time"] = executionTime(sstime)
     -- redis.log(redis.LOG_NOTICE,"筛选时间:"..executionTime(sstime).."ms")
 end
 timemap["total_time"] = executionTime(begintime)
--- redis.log(redis.LOG_NOTICE,"脚本执行完成:"..executionTime(begintime).."ms")
 return {KEYS,values,json_encode(timemap)};

@@ -53,6 +53,18 @@ abstract class Command
 
     protected static $luaCode = [];
 
+    protected $exec_time = [];
+
+    /**
+     * [$redis_variable redis变量 ]
+     * @var array ["debug"=>"0","isNoCache"=>"yes"]
+     */
+    protected $redis_variable = [
+        "isNoCache"=>"no",      //是否不开启redis内部缓存 yes是  no否
+        "debug"=>"no",          //是否开启debug模式 yes是  no否
+        "redisCacheExpire"=>10  //redis内部缓存时间 默认10秒
+    ];
+
     /**
      * Command constructor.
      * @param array $keys
@@ -119,13 +131,18 @@ abstract class Command
         if (empty($data)) {
             return [];
         }
+        if( !empty($data[2]) ) $this->exec_time = json_decode($data[2],1);
         if (isset($data[0]) && count($data[0]) === $this->getKeysCount()) {
             $items = array_combine($data[0], $data[1]);
-// print_r($items);
             return array_filter($items, [$this, 'notNil']);
         }
 
         throw new Exception('Error when evaluate lua script. Response is: ' . json_encode($data));
+    }
+
+    public function getRedisExecTime()
+    {
+        return $this->exec_time;
     }
 
     /**
@@ -189,5 +206,26 @@ LUA;
             self::$luaCode[$name] = file_get_contents(__DIR__."/Lua/".$name.".lua");
         }
         return self::$luaCode[$name];
+    }
+
+    /**
+     * [setRedisVariable 设置redis lua 变量]
+     * @param [type] $key   [description]
+     * @param [type] $value [description]
+     */
+    public function setRedisVariable($key,$value)
+    {
+        $this->redis_variable[$key] = $value;
+    }
+
+
+    /**
+     * [getRedisVariable 获取设置的 redis lua 变量]
+     * @param  string $key [description]
+     * @return [type]      [description]
+     */
+    public function getRedisVariable($key='')
+    {
+        return $this->redis_variable[$key]??$this->redis_variable;
     }
 }

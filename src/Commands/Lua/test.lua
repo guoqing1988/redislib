@@ -3,9 +3,84 @@ local table_insert = table.insert
 local table_concat = table.concat
 local string_format = string.format
 
+local unpack = unpack or table.unpack
+
+local function is_callable(f)
+  local tf = type(f)
+  if tf == 'function' then return true end
+  if tf == 'table' then
+    local mt = getmetatable(f)
+    return type(mt) == 'table' and is_callable(mt.__call)
+  end
+  return false
+end
+
+local function cache_get(cache, params)
+  local node = cache
+  for i=1, #params do
+    node = node.children and node.children[params[i]]
+    if not node then return nil end
+  end
+  return node.results
+end
+
+local function cache_put(cache, params, results)
+  local node = cache
+  local param
+  for i=1, #params do
+    param = params[i]
+    node.children = node.children or {}
+    node.children[param] = node.children[param] or {}
+    node = node.children[param]
+  end
+  node.results = results
+end
+
+-- public function
+
+local function memoize(f, cache)
+  cache = cache or {}
+
+  if not is_callable(f) then
+    print(string.format(
+            "Only functions and callable tables are memoizable. Received %s (a %s)",
+             tostring(f), type(f)))
+  end
+
+  return function (...)
+    local params = {...}
+
+    local results = cache_get(cache, params)
+    if not results then
+      results = { f(...) }
+      cache_put(cache, params, results)
+      print("set","\n")
+    end
+    return unpack(results)
+  end
+end
+local local_memoize = {}
+setmetatable(local_memoize, { __call = function(_, ...) return memoize(...) end })
+
+
+
 local M = {}
-
-
+local function split(szFullString, szSeparator)  
+    local nFindStartIndex = 1  
+    local nSplitIndex = 1  
+    local nSplitArray = {}
+    while true do  
+       local nFindLastIndex = string.find(szFullString, szSeparator, nFindStartIndex)  
+       if not nFindLastIndex then  
+            nSplitArray[nSplitIndex] = string.sub(szFullString, nFindStartIndex, string.len(szFullString))  
+            break  
+       end  
+       nSplitArray[nSplitIndex] = string.sub(szFullString, nFindStartIndex, nFindLastIndex - 1)  
+       nFindStartIndex = nFindLastIndex + string.len(szSeparator)  
+       nSplitIndex = nSplitIndex + 1  
+    end
+    return nSplitArray
+end
 function M.split(str, split)
     local list = {}
     local pos = 1
@@ -25,6 +100,28 @@ function M.split(str, split)
     return list
 end
 
+local function splitToObj(str, split)
+    local list = {}
+    local pos = 1
+    if string.find("", split, 1) then -- this would result in endless loops
+    error("split matches empty string!")
+    end
+    while true do
+        local first, last = string.find(str, split, pos)
+        if first then
+            local item = string.sub(str, pos, first - 1)
+            if item~="" then list[item] = 1 end
+            -- table_insert(list, string.sub(str, pos, first - 1))
+            pos = last + 1
+        else
+            local item = string.sub(str, pos)
+            if item~="" then list[item] = 1 end
+            -- table_insert(list, string.sub(str, pos))
+            break
+        end
+    end
+    return list
+end
 
 -- 深拷贝
 function M.copy(t, meta)
@@ -282,15 +379,50 @@ local tpl = {
     {["id"]=6,["name"]="123",["age"]="5"},
 }
 
-local orderBy = cjson.decode('[["age",1],["id",1]]')
-tpl = tableSort(tpl,orderBy)
+local memoize_splitToObj = local_memoize(splitToObj)
 
-local x
-local ok ,e = pcall(function()
-   x = cjson.decode('1231xxx')
-end)
-print(ok)
-print(x)
+local begin =os.clock()
+for i=1,100000 do
+memoize_splitToObj("1,3,4,024,897,",",")
+-- splitToObj("1,3,4,024,897,",",")
+end
+print(string.format("total time:%.2fms\n", ((os.clock() - begin) * 1000)))
+
+
+local function add ( ... )
+    print_r({...})
+    -- for i, v in ipairs{...} do
+    --     print(i, ' ',  v)
+    -- end
+end
+
+local redisCacheExpire = '2'
+local cache_expire = tonumber(redisCacheExpire) or 10
+
+-- print_r(cache_expire)
+
+local p = {1,2,3,4,5}
+-- print_r(p)
+-- add(222,unpack(p))
+-- local a = {1,1,1,1,1,1,1}
+
+-- a[1] = "test";
+-- a[2] = "test";
+-- a[3] = "test";
+-- a["xxx"] = "test";
+-- a["xx"] = "test";
+-- a[6] = "test";
+-- a[9] = "test";
+-- print_r(a)
+-- local orderBy = cjson.decode('[["age",1],["id",1]]')
+-- tpl = tableSort(tpl,orderBy)
+
+-- local x
+-- local ok ,e = pcall(function()
+--    x = cjson.decode('1231xxx')
+-- end)
+-- print(ok)
+-- print(x)
 -- print_r(tpl)
 -- local a =xpcall(cjson.decode('{发的是放假了圣诞节}'))
 -- print(a)

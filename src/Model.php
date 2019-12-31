@@ -14,6 +14,7 @@ abstract class Model
     const TYPE_SORTED_SET = 'zset';
     const TYPE_LIST = 'list';
     const TYPE_HASH = 'hash';
+    const TYPE_TABLE = 'table';
 
     // not expired ttl
     const TTL_PERSIST = '-1';
@@ -96,6 +97,8 @@ abstract class Model
      * @var array
      */
     private $orderByFieldIndices = [];
+
+    protected $redis_exec_time = [];
 
     public function __construct($parameters = null)
     {
@@ -403,6 +406,8 @@ abstract class Model
      */
     public function insert(array $bindings, $value, $ttl = null, $exists = null, $deleteIfExists = null )
     {
+        if( $this->type == self::TYPE_TABLE ) return $this->AddTable($bindings, $value, $ttl, $deleteIfExists);
+
         $this->newQuery();
 
         foreach ($bindings as $k => $v) {
@@ -493,13 +498,20 @@ abstract class Model
      */
     public function findInRedis($where=[],$orderby=[],$limit=1000,$select="")
     {
-        $queryKeys = $this->prepareKeys();
+        $queryKeys = $this->queryBuilder->getQueryKeys();
         $data = [];
         if ($queryKeys) {
             list($method, $params) = $this->getFindRedisMethodAndParameters();
-            // var_dump($method);
-            // array_unshift($queryKeys,$method);
-            
+            $rwhere = [];
+            foreach ($where as $k => $v) {
+                if (preg_match('/(?P<key>\w*)\s+(?P<operator>like|not\s+like|>|>=|<|<=|<>|between|in|not\s+in)/i', $k,$match)) {
+                    $rwhere[$match['key']] = [$match['operator'],is_array($v)?$v:trim($v,'% ')]; 
+                } else {
+                    $rwhere[$k] = $v;
+                }
+            }
+            $where = $rwhere;
+
             if( $orderby && !is_array($orderby) ){
                 $rorderby = [];
                 //1 升序， 2 降序
@@ -536,18 +548,25 @@ abstract class Model
             $args[] = $orderby?$orderby:[];
             $args[] = intval($limit);
             if( $select ){
+                $select = $select=='*'?[]:$select;
                 $args[] = is_array($select)?$select:explode(',',$select);
             }
 
             // print_r($args);exit;
             $command = $this->commandFactory->getCommand($method, $queryKeys,$args);
             $data = $this->executeCommand($command);
+            $this->redis_exec_time = $command->getRedisExecTime();
             // var_dump($data);exit;
         }
         // if ($data && $this->type == static::TYPE_HASH) {
         //     $data = $this->resolveHashes($data);
         // }
         return $data;
+    }
+
+    public function getRedisExecTime()
+    {
+        return $this->redis_exec_time;
     }
 
     /**
@@ -856,6 +875,51 @@ abstract class Model
         return isset($response[$key]) && $response[$key];
     }
 
+    public function setSortField($value='')
+    {
+        $this->sortField = $value;
+        return $this;
+    }
+
+    public function AddTable($tkey, $value, $ttl = null,$deleteIfExists = false)
+    {
+        $this->newQuery();
+        if( is_array($tkey) ){
+            foreach ($tkey as $k => $v) {
+                $this->queryBuilder->whereEqual($k, $v);
+            }
+            $queryKey = $this->queryBuilder->firstQueryKey();
+        }else{
+            $queryKey = $this->queryBuilder->whereEqual($this->primaryFieldName, $tkey)->firstQueryKey();
+        }
+        
+
+        $sortlist = [];
+        $sortField = $this->sortField?:'id';
+        foreach ($value as $key => $v) {
+            // $sortlist[$v[$sortField]] = $v["id"];
+            $sortlist[] = $v[$sortField];
+            $sortlist[] = $v["id"];
+        }
+
+        $command = $this->commandFactory->getCommand('zadd', [$queryKey], $sortlist);
+        $ttl and $command->setTtl($ttl);
+        $deleteIfExists and $command->pleaseDeleteIfExists();
+        $response['zset'] = $this->executeCommand($command);
+        foreach ($value as $key => $v) {
+            $hash_data = [];
+            foreach ($v as $kk => $vv) {
+                $hash_data[] = $kk;
+                $hash_data[] = is_array($vv)?json_encode($vv,256):$vv;
+            }
+            $command = $this->commandFactory->getCommand('hmset', [$queryKey.":".$v['id']], $hash_data);
+            $ttl and $command->setTtl($ttl);
+            $deleteIfExists and $command->pleaseDeleteIfExists();
+            $response['hash'][$v['id']] = $this->executeCommand($command);
+        }
+        return $response;
+    }
+
     /**
      * @param $keys
      * @param $value
@@ -944,6 +1008,8 @@ abstract class Model
             case 'hash':
                 $method = 'hmset';
                 break;
+            case self::TYPE_TABLE:
+                $method = 'addtable';
             default:
                 break;
         }
@@ -983,6 +1049,10 @@ abstract class Model
                 }
                 // print_r($casted);exit;
                 $value = $casted;
+                break;
+            case self::TYPE_TABLE:
+
+                # code...
                 break;
             default:
                 break;
@@ -1048,6 +1118,9 @@ abstract class Model
                 break;
             case 'hash':
                 $method = 'hgetfind';
+                break;            
+            case 'table':
+                $method = 'findtable';
                 break;
             default:
                 break;

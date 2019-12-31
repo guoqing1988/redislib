@@ -3,10 +3,10 @@ namespace Wuhen\Redislib\Commands;
 
 /**
  * Command for "getfind"
- * Class GetfindCommand
+ * Class FindtableCommand
  * @package Wuhen\Redislib\Commands
  */
-class GetfindCommand extends RedisfindCommand
+class FindtableCommand extends RedisfindCommand
 {
-    
+
 }
